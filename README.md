@@ -22,16 +22,13 @@ A full-stack web application to analyze web pages, extracting image details and 
 ## Installation
 
 1. Clone the repository
-
-
+```bash
 git clone <your-repo-url>
 cd url-analyzer
-
-
+```
 
 2. Install dependencies
-
-
+```bash
 # Install frontend dependencies
 cd frontend
 npm install
@@ -39,16 +36,13 @@ npm install
 # Install backend dependencies
 cd ../backend
 npm install
-
-
+```
 
 3. Run the application
-
-
+```bash
 # Start frontend and backend concurrently
 npm run start
-
-
+```
 
 ## Configuration
 - Frontend runs on `http://localhost:3000`
