@@ -1,93 +1,115 @@
-const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const cors = require("cors");
-// Import the url module for resolving relative URLs
-const urlModule = require("url"); 
-const imageSizePromises = [];
+const express = require('express');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const cors = require('cors');
+const url = require('url');
 
 const app = express();
-app.use(cors()); // Enable CORS
-app.use(express.json()); // Enable JSON request body
+app.use(cors());
+app.use(express.json());
 
-// Sample route to test the server
-app.get("/", (req, res) => {
-    res.send("Backend is running!");
+app.get('/', (req, res) => {
+    res.send('URL Analyzer Backend is running!');
 });
 
-// Endpoint to fetch URL details
 app.post('/api/analyze-url', async (req, res) => {
-    const { url } = req.body;
+    const { url: inputUrl } = req.body;
 
-    if (!url) {
-        return res.status(400).json({ message: "URL is required" });
+    if (!inputUrl) {
+        return res.status(400).json({ message: 'URL is required' });
     }
 
     try {
-        // Fetch the HTML content of the URL
-        const response = await axios.get(url);
+        const response = await axios.get(inputUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
         const html = response.data;
         const $ = cheerio.load(html);
+        const baseUrl = new URL(inputUrl);
 
-
-        // Analyze images
+        // Image Analysis
         const imageTypes = {};
-        $('img').each((index, element) => {
-            let src = $(element).attr('src');
-            if (!src) return; // Skip if no src
+        const imageSizePromises = [];
 
-            // Resolve relative URLs
-            src = urlModule.resolve(url, src);
-            const extension = src ? src.split('.').pop() : 'unknown';
+        $('img').each((_, element) => {
+            let src = $(element).attr('src');
+            if (!src) return;
+
+            try {
+                src = new URL(src, baseUrl).href;
+            } catch {
+                return;
+            }
+
+            const extension = src.split('.').pop().toLowerCase().split('?')[0] || 'unknown';
 
             if (!imageTypes[extension]) {
                 imageTypes[extension] = { count: 0, size: 0 };
             }
 
-            // Increment the image count 
             imageTypes[extension].count += 1;
 
-            // Push the axios request to an array of promises
-            imageSizePromises.push(axios.get(src, { responseType: 'arraybuffer' })
-                .then((imageResponse) => {
-                    const imageSize = Buffer.byteLength(imageResponse.data);
-                    imageTypes[extension].size += imageSize;
-                }).catch((err) => {
-                    console.error(`Error fetching image: ${src}`, err);
-                })
+            imageSizePromises.push(
+                axios.get(src, { responseType: 'arraybuffer' })
+                    .then((imageResponse) => {
+                        imageTypes[extension].size += Buffer.byteLength(imageResponse.data);
+                    })
+                    .catch(() => {})
             );
         });
 
-        await Promise.all(imageSizePromises);
+        await Promise.allSettled(imageSizePromises);
 
-        const internalLinks = [];
-        const externalLinks = [];
-        $('a').each((index, element) => {
-            const href = $(element).attr('href');
-            if (href) {
-                const isInternal = href.startsWith(url);
-                if (isInternal) {
-                    internalLinks.push(href);
+        // Link Analysis
+        const internalLinks = new Set();
+        const externalLinks = new Set();
+
+        $('a').each((_, element) => {
+            let href = $(element).attr('href');
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+
+            try {
+                const absoluteUrl = new URL(href, baseUrl).href;
+                const absoluteUrlObj = new URL(absoluteUrl);
+                const baseUrlObj = new URL(baseUrl);
+
+                const cleanBaseHost = baseUrlObj.hostname.replace(/^www\./, '');
+                const cleanLinkHost = absoluteUrlObj.hostname.replace(/^www\./, '');
+
+                if (
+                    cleanLinkHost === cleanBaseHost || 
+                    absoluteUrl.startsWith(baseUrl.href) ||
+                    absoluteUrlObj.hostname.endsWith(cleanBaseHost)
+                ) {
+                    internalLinks.add(absoluteUrl);
                 } else {
-                    externalLinks.push(href);
+                    externalLinks.add(absoluteUrl);
                 }
+            } catch {
+                // Ignore invalid URLs
             }
         });
 
         res.json({
-            message: "URL processed successfully",
+            message: 'URL processed successfully',
             data: {
                 imageTypes,
-                internalLinks,
-                externalLinks,
-            },
+                internalLinks: [...internalLinks].slice(0, 50),  // Limit to 50 links
+                externalLinks: [...externalLinks].slice(0, 50)   // Limit to 50 links
+            }
         });
+
     } catch (error) {
-        console.error("Error processing the URL:", error);
-        res.status(500).json({ message: 'Error processing URL' });
+        console.error('URL Processing Error:', error.message);
+        res.status(500).json({ 
+            message: 'Error processing URL', 
+            details: error.message 
+        });
     }
 });
-
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
