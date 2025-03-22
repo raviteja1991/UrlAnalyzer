@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 import { API_BASE_URL } from '../config.ts'; 
+import { useInView } from 'react-intersection-observer';
 
 interface ImageInfo {
   count: number;
@@ -79,7 +80,11 @@ function App() {
         }
       );
 
-      setData(response.data.data);
+      if (response.status === 200) {
+        setData(response.data.data);
+      } else {
+        setError(`Unexpected status: ${response.status}`);
+      }
 
       // Add to history if not already present
       if (!urlHistory.includes(inputUrl)) {
@@ -90,6 +95,8 @@ function App() {
       console.error('API Error:', error);
       if (error.code === 'ECONNABORTED') {
         setError('Request timed out. The website might be too large or slow to respond.');
+      } else if (error.response) {
+        setError(`Error ${error.response.status}: ${error.response.data?.message || 'Unknown error'}`);
       } else if (!navigator.onLine) {
         setError('You are offline. Please check your internet connection.');
       } else {
@@ -114,16 +121,34 @@ function App() {
     handleAnalyzeClick(linkUrl);
   };
 
-  const downloadImage = (imageUrl: string) => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = imageUrl.split('/').pop() || 'image';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const downloadImage = async (imageUrl: string) => {
+    try{
+      const response = await fetch(imageUrl);
+
+      if (!response.ok) {
+        console.error('Failed to download image:', response.statusText);
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = imageUrl.split('/').pop() || 'image';
+
+      document.body.appendChild(a);
+      a.click();
+
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }catch(error){
+      console.error('Failed to download image:', error);
+    }
   };
 
-  const downloadAllImages = (urls: string[]) => {
+  const downloadAllImages = async (urls: string[]) => {
+
     // If too many images, warn the user
     if (urls.length > 10) {
       const confirm = window.confirm(`You're about to download ${urls.length} images. Continue?`);
@@ -131,11 +156,10 @@ function App() {
     }
 
     // Use a more efficient method for larger collections
-    urls.forEach((url, index) => {
-      setTimeout(() => {
-        downloadImage(url);
-      }, index * 500); // Reduced delay between downloads
-    });
+    for (let i = 0; i < urls.length; i++) {
+      await downloadImage(urls[i]);
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Delay between downloads
+    }
   };
 
   const copyAllLinks = (links: string[]) => {

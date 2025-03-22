@@ -33,7 +33,7 @@ body {
   padding: 2rem;
   display: flex;
   flex-direction: column;
-  align-items: center; /* Centers content horizontally */
+  /* align-items: center; /* Centers content horizontally */
   justify-content: flex-start; /* Keeps content aligned towards the top */
   min-height: 100vh; /* Ensures it takes at least the full viewport height */
 }
@@ -46,7 +46,7 @@ body {
 /* Header section styling */
 .header-top {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   margin-bottom: 0.5rem;
 }
